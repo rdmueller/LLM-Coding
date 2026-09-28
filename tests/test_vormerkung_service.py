@@ -8,7 +8,7 @@ from datetime import date, timedelta
 import pytest
 
 from app.container import Anwendungskontext
-from app.errors import NotFoundError
+from app.errors import ConflictError, NotFoundError
 from app.services.oeffnungstage import verfallszeit_berechnen
 
 
@@ -170,3 +170,19 @@ def test_zwei_gleichzeitige_entfernen_versuche_nur_einer_gelingt_br_nl_02(
     assert erfolg_a is True
     assert erfolg_b is False
 
+
+def test_zuteilen_rollt_entfernte_warteschlange_bei_konflikt_zurueck(
+    kontext: Anwendungskontext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    kategorie = _kategorie(kontext)
+    gegenstand = _gegenstand(kontext, kategorie.id)
+    mitglied = _mitglied(kontext)
+    kontext.vormerkung_service.vormerken(kategorie.id, mitglied.id)
+
+    monkeypatch.setattr(kontext.gegenstand_repository, "zustand_wechseln_atomar", lambda *args: False)
+
+    with pytest.raises(ConflictError):
+        kontext.vormerkung_service.zuteilen(gegenstand.id, kategorie.id)
+
+    assert len(kontext.vormerkung_repository.warteschlange(kategorie.id)) == 1
+    assert kontext.reservierung_repository.finden_aktiv_fuer_gegenstand(gegenstand.id) is None

@@ -5,7 +5,10 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
+import pytest
+
 from app.container import Anwendungskontext
+from app.errors import NotFoundError
 
 
 def test_einweisung_gilt_nur_fuer_ihre_kategorie(kontext: Anwendungskontext) -> None:
@@ -64,3 +67,12 @@ def test_mitglied_bleibt_gesperrt_bis_pruefung_abgeschlossen_br_sp_03(
         gegenstand.id, ergebnis="unauffaellig", rolle="wart"
     )
     assert not kontext.mitglied_service.ist_gesperrt(mitglied.id)
+
+
+def test_einweisung_mit_unbekannter_kategorie_wird_mit_not_found_abgelehnt(
+    kontext: Anwendungskontext,
+) -> None:
+    mitglied = kontext.mitglied_service.mitglied_anlegen("Karim")
+
+    with pytest.raises(NotFoundError):
+        kontext.mitglied_service.einweisung_erfassen(mitglied.id, "unbekannt")

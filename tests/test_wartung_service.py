@@ -110,6 +110,36 @@ def test_ausmustern_laesst_vormerkungs_warteschlange_unveraendert_br_vm_07(
     assert len(ausleihen) == 0
 
 
+def test_wartung_abschliessen_rollt_bei_spaeterem_fehler_zurueck(
+    kontext: Anwendungskontext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    gegenstand = _wartungsfaellig(kontext)
+
+    def kaputt(*args, **kwargs):
+        raise RuntimeError("kaputt")
+
+    monkeypatch.setattr(kontext.vormerkung_service, "zuteilen", kaputt)
+
+    with pytest.raises(RuntimeError):
+        kontext.wartung_service.wartung_abschliessen(gegenstand.id)
+
+    assert kontext.gegenstand_repository.finden(gegenstand.id).zustand == "wartungsfaellig"
+
+
+def test_ausmustern_reservierten_gegenstand_wird_abgelehnt(kontext: Anwendungskontext) -> None:
+    kategorie = _kategorie(kontext)
+    gegenstand = _gegenstand(kontext, kategorie.id, inventarnummer="INV-res")
+    ausleiher = _mitglied(kontext, "Karim")
+    reservierendes_mitglied = _mitglied(kontext, "Fatima")
+    kontext.ausleihe_service.ausgeben(gegenstand.id, ausleiher.id)
+    kontext.rueckgabe_service.zuruecknehmen(gegenstand.id)
+    kontext.vormerkung_service.vormerken(kategorie.id, reservierendes_mitglied.id)
+    kontext.rueckgabe_service.pruefung_abschliessen(gegenstand.id, "unauffaellig")
+
+    with pytest.raises(ConflictError):
+        kontext.wartung_service.ausmustern(gegenstand.id)
+
+
 def test_ausmustern_durch_falsche_rolle_wird_abgelehnt(kontext: Anwendungskontext) -> None:
     kategorie = _kategorie(kontext)
     gegenstand = _gegenstand(kontext, kategorie.id)

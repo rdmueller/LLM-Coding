@@ -5,6 +5,7 @@ import sqlite3
 import uuid
 
 from app.models import Einweisung
+from app.repositories._transaction import commit_when_unmanaged
 
 
 class EinweisungRepository:
@@ -17,7 +18,7 @@ class EinweisungRepository:
             "INSERT INTO einweisung (id, mitglied_id, kategorie_id, datum) VALUES (?, ?, ?, ?)",
             (einweisung_id, mitglied_id, kategorie_id, datum),
         )
-        self._conn.commit()
+        commit_when_unmanaged(self._conn)
         return Einweisung(einweisung_id, mitglied_id, kategorie_id, datum)
 
     def existiert(self, mitglied_id: str, kategorie_id: str) -> bool:

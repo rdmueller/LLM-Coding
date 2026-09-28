@@ -8,6 +8,7 @@ from app.models import Reservierung, Vormerkung
 from app.repositories.gegenstand_repository import GegenstandRepository
 from app.repositories.kategorie_repository import KategorieRepository
 from app.repositories.mitglied_repository import MitgliedRepository
+from app.repositories._transaction import transaction
 from app.repositories.reservierung_repository import ReservierungRepository
 from app.repositories.vormerkung_repository import VormerkungRepository
 from app.services.mitglied_service import MitgliedService
@@ -48,39 +49,41 @@ class VormerkungService:
         return vormerkung, position
 
     def zuteilen(self, gegenstand_id: str, kategorie_id: str) -> Reservierung | None:
-        warteschlange = self._vormerkung_repository.warteschlange(kategorie_id)
-        for eintrag in warteschlange:
-            if self._mitglied_service.ist_gesperrt(eintrag.mitglied_id):  # BR-VM-08
-                continue
+        with transaction(self._gegenstand_repository._conn, immediate=True):
+            warteschlange = self._vormerkung_repository.warteschlange(kategorie_id)
+            for eintrag in warteschlange:
+                if self._mitglied_service.ist_gesperrt(eintrag.mitglied_id):  # BR-VM-08
+                    continue
 
-            if not self._vormerkung_repository.entfernen_atomar(eintrag.id):  # BR-NL-02
-                return None
+                if not self._vormerkung_repository.entfernen_atomar(eintrag.id):  # BR-NL-02
+                    return None
 
-            gegenstand = self._gegenstand_repository.finden(gegenstand_id)
-            erstellt_am = date.today()
-            verfallszeit = verfallszeit_berechnen(erstellt_am)  # BR-VM-04
-            reservierung = self._reservierung_repository.anlegen(
-                gegenstand_id, eintrag.mitglied_id, erstellt_am.isoformat(), verfallszeit.isoformat()
-            )
-            erfolgreich = self._gegenstand_repository.zustand_wechseln_atomar(
-                gegenstand_id, "verfuegbar", "reserviert", gegenstand.version
-            )
-            if not erfolgreich:
-                raise ConflictError("Gegenstand wurde inzwischen anderweitig verändert")
-            return reservierung
+                gegenstand = self._gegenstand_repository.finden(gegenstand_id)
+                erstellt_am = date.today()
+                verfallszeit = verfallszeit_berechnen(erstellt_am)  # BR-VM-04
+                reservierung = self._reservierung_repository.anlegen(
+                    gegenstand_id, eintrag.mitglied_id, erstellt_am.isoformat(), verfallszeit.isoformat()
+                )
+                erfolgreich = self._gegenstand_repository.zustand_wechseln_atomar(
+                    gegenstand_id, "verfuegbar", "reserviert", gegenstand.version
+                )
+                if not erfolgreich:
+                    raise ConflictError("Gegenstand wurde inzwischen anderweitig verändert")
+                return reservierung
 
-        return None
+            return None
 
     def verfall_pruefen(self, gegenstand_id: str) -> None:  # BR-VM-05
-        reservierung = self._reservierung_repository.finden_aktiv_fuer_gegenstand(gegenstand_id)
-        if reservierung is None:
-            return
-        if date.fromisoformat(reservierung.verfallszeit) < date.today():
-            self._reservierung_repository.status_setzen(reservierung.id, "verfallen")
-            gegenstand = self._gegenstand_repository.finden(gegenstand_id)
-            neue_reservierung = self.zuteilen(gegenstand_id, gegenstand.kategorie_id)
-            if neue_reservierung is None:
-                self._gegenstand_repository.zustand_wechseln_atomar(
+        with transaction(self._gegenstand_repository._conn, immediate=True):
+            reservierung = self._reservierung_repository.finden_aktiv_fuer_gegenstand(gegenstand_id)
+            if reservierung is None:
+                return
+            if date.fromisoformat(reservierung.verfallszeit) <= date.today():
+                self._reservierung_repository.status_setzen(reservierung.id, "verfallen")
+                gegenstand = self._gegenstand_repository.finden(gegenstand_id)
+                erfolgreich = self._gegenstand_repository.zustand_wechseln_atomar(
                     gegenstand_id, "reserviert", "verfuegbar", gegenstand.version
                 )
-
+                if not erfolgreich:
+                    raise ConflictError("Gegenstand wurde inzwischen anderweitig verändert")
+                self.zuteilen(gegenstand_id, gegenstand.kategorie_id)

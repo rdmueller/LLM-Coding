@@ -5,6 +5,7 @@ import sqlite3
 import uuid
 
 from app.models import Kategorie
+from app.repositories._transaction import commit_when_unmanaged
 
 
 class KategorieRepository:
@@ -24,7 +25,7 @@ class KategorieRepository:
             "einweisungspflichtig) VALUES (?, ?, ?, ?, ?)",
             (kategorie_id, name, leihdauer_tage, wartungsintervall, int(einweisungspflichtig)),
         )
-        self._conn.commit()
+        commit_when_unmanaged(self._conn)
         return Kategorie(kategorie_id, name, leihdauer_tage, wartungsintervall, einweisungspflichtig)
 
     def finden(self, kategorie_id: str) -> Kategorie | None:

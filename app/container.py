@@ -60,7 +60,9 @@ def erstellen(conn: sqlite3.Connection) -> Anwendungskontext:
     audit_repository = AuditRepository(conn)
 
     katalog_service = KatalogService(kategorie_repository, gegenstand_repository, vormerkung_repository)
-    mitglied_service = MitgliedService(mitglied_repository, einweisung_repository, ausleihe_repository)
+    mitglied_service = MitgliedService(
+        mitglied_repository, einweisung_repository, kategorie_repository, ausleihe_repository
+    )
     audit_service = AuditService(audit_repository)
     vormerkung_service = VormerkungService(
         kategorie_repository=kategorie_repository,

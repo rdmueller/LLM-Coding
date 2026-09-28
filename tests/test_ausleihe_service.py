@@ -149,6 +149,33 @@ def test_zweite_verlaengerung_wird_abgelehnt_br_aus_06(kontext: Anwendungskontex
         kontext.ausleihe_service.verlaengern(ausleihe.id)
 
 
+def test_abgeschlossene_ausleihe_kann_nicht_verlaengert_werden_br_aus_08(
+    kontext: Anwendungskontext,
+) -> None:
+    kategorie = _kategorie(kontext)
+    gegenstand = _gegenstand(kontext, kategorie.id)
+    mitglied = _mitglied(kontext)
+    ausleihe = kontext.ausleihe_service.ausgeben(gegenstand.id, mitglied.id)
+    kontext.rueckgabe_service.zuruecknehmen(gegenstand.id)
+    kontext.rueckgabe_service.pruefung_abschliessen(gegenstand.id, "unauffaellig")
+
+    with pytest.raises(ConflictError):
+        kontext.ausleihe_service.verlaengern(ausleihe.id)
+
+
+def test_mitglied_kann_nur_eigene_ausleihe_verlaengern_br_aus_08(
+    kontext: Anwendungskontext,
+) -> None:
+    kategorie = _kategorie(kontext)
+    gegenstand = _gegenstand(kontext, kategorie.id)
+    mitglied = _mitglied(kontext, "Karim")
+    anderes_mitglied = _mitglied(kontext, "Fatima")
+    ausleihe = kontext.ausleihe_service.ausgeben(gegenstand.id, mitglied.id)
+
+    with pytest.raises(ValidationError):
+        kontext.ausleihe_service.verlaengern(ausleihe.id, anfragendes_mitglied_id=anderes_mitglied.id)
+
+
 def test_verlaengerung_bei_offener_vormerkung_wird_abgelehnt_br_aus_07(
     kontext: Anwendungskontext,
 ) -> None:
@@ -218,3 +245,22 @@ def test_anderes_mitglied_kann_reservierten_gegenstand_nicht_abholen_br_vm_03(
 
     with pytest.raises(ConflictError):
         kontext.ausleihe_service.ausgeben(gegenstand.id, fremdes_mitglied.id)
+
+
+def test_ausgabe_rollt_bei_fehler_nach_zustandswechsel_vollstaendig_zurueck(
+    kontext: Anwendungskontext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    kategorie = _kategorie(kontext)
+    gegenstand = _gegenstand(kontext, kategorie.id)
+    mitglied = _mitglied(kontext)
+
+    def kaputt(*args, **kwargs):
+        raise RuntimeError("kaputt")
+
+    monkeypatch.setattr(kontext.kaution_repository, "hinterlegen", kaputt)
+
+    with pytest.raises(RuntimeError):
+        kontext.ausleihe_service.ausgeben(gegenstand.id, mitglied.id)
+
+    assert kontext.gegenstand_repository.finden(gegenstand.id).zustand == "verfuegbar"
+    assert kontext.ausleihe_repository.finden_aktive_fuer_gegenstand(gegenstand.id) is None

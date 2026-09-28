@@ -68,14 +68,14 @@ entity Kaution {
   status
 }
 
-entity Kautionsbewegung {
+entity AuditLog {
   * id
   --
-  kautionId
-  typ
-  betrag
   zeitstempel
+  ereignisTyp
+  betragOderZustand
   ausloeser
+  referenzId
 }
 
 entity Pruefprotokoll {
@@ -110,7 +110,7 @@ Kategorie ||--o{ Einweisung
 Gegenstand ||--o{ Ausleihe
 Mitglied ||--o{ Ausleihe
 Ausleihe ||--|| Kaution
-Kaution ||--o{ Kautionsbewegung
+Kaution ||..o{ AuditLog : referenziert
 Ausleihe ||--o{ Pruefprotokoll
 Kategorie ||--o{ Vormerkung
 Mitglied ||--o{ Vormerkung

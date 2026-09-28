@@ -4,7 +4,9 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
+from app.container import erstellen
 from app.api.app import create_app
+from app.db import get_connection
 
 
 @pytest.fixture
@@ -109,7 +111,8 @@ def test_suc_02_verlaengerung_erfolgreich(client: TestClient) -> None:
     ausleihe_id = ausgabe.json()["id"]
 
     response = client.post(
-        f"/ausleihen/{ausleihe_id}/verlaengerung", headers={"X-Rolle": "mitglied"}
+        f"/ausleihen/{ausleihe_id}/verlaengerung",
+        headers={"X-Rolle": "mitglied", "X-Mitglied-Id": mitglied_id},
     )
 
     assert response.status_code == 200
@@ -126,14 +129,65 @@ def test_suc_02_zweite_verlaengerung_409(client: TestClient) -> None:
         headers={"X-Rolle": "thekendienst"},
     )
     ausleihe_id = ausgabe.json()["id"]
-    client.post(f"/ausleihen/{ausleihe_id}/verlaengerung", headers={"X-Rolle": "mitglied"})
+    client.post(
+        f"/ausleihen/{ausleihe_id}/verlaengerung",
+        headers={"X-Rolle": "mitglied", "X-Mitglied-Id": mitglied_id},
+    )
 
     response = client.post(
-        f"/ausleihen/{ausleihe_id}/verlaengerung", headers={"X-Rolle": "mitglied"}
+        f"/ausleihen/{ausleihe_id}/verlaengerung",
+        headers={"X-Rolle": "mitglied", "X-Mitglied-Id": mitglied_id},
     )
 
     assert response.status_code == 409
     assert response.json()["code"] == "EXTENSION_NOT_ALLOWED"
+
+
+def test_suc_02_mitglied_ohne_x_mitglied_id_erhaelt_403(client: TestClient) -> None:
+    kategorie_id = _kategorie_anlegen(client)
+    gegenstand_id = _gegenstand_anlegen(client, kategorie_id)
+    mitglied_id = _mitglied_anlegen(client)
+    ausgabe = client.post(
+        f"/gegenstaende/{gegenstand_id}/ausgabe",
+        json={"mitgliedId": mitglied_id},
+        headers={"X-Rolle": "thekendienst"},
+    )
+    ausleihe_id = ausgabe.json()["id"]
+
+    response = client.post(f"/ausleihen/{ausleihe_id}/verlaengerung", headers={"X-Rolle": "mitglied"})
+
+    assert response.status_code == 403
+    assert response.json()["code"] == "FORBIDDEN"
+
+
+def test_suc_02_mitglied_kann_nur_eigene_ausleihe_verlaengern(client: TestClient) -> None:
+    kategorie_id = _kategorie_anlegen(client)
+    gegenstand_id = _gegenstand_anlegen(client, kategorie_id)
+    mitglied_id = _mitglied_anlegen(client, "Karim")
+    anderes_mitglied_id = _mitglied_anlegen(client, "Fatima")
+    ausgabe = client.post(
+        f"/gegenstaende/{gegenstand_id}/ausgabe",
+        json={"mitgliedId": mitglied_id},
+        headers={"X-Rolle": "thekendienst"},
+    )
+    ausleihe_id = ausgabe.json()["id"]
+
+    response = client.post(
+        f"/ausleihen/{ausleihe_id}/verlaengerung",
+        headers={"X-Rolle": "mitglied", "X-Mitglied-Id": anderes_mitglied_id},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["code"] == "FORBIDDEN"
+
+
+def test_kategorie_mit_leerem_namen_wird_mit_422_abgelehnt(client: TestClient) -> None:
+    response = client.post(
+        "/kategorien",
+        json={"name": "", "leihdauerTage": 14, "wartungsintervall": 20, "einweisungspflichtig": False},
+    )
+
+    assert response.status_code == 422
 
 
 def test_suc_03_ruecknahme_erfolgreich(client: TestClient) -> None:
@@ -261,9 +315,11 @@ def test_suc_04_gegenstand_lesen_reserviert_enthaelt_reservierten_mitglied_id(
         json={"mitgliedId": vormerker_id},
         headers={"X-Rolle": "mitglied"},
     )
-    kontext = client.app.state.kontext
+    conn = get_connection(client.app.state.db_path)
+    kontext = erstellen(conn)
     kontext.rueckgabe_service.zuruecknehmen(gegenstand_id)
     kontext.rueckgabe_service.pruefung_abschliessen(gegenstand_id, "unauffaellig")
+    conn.close()
 
     response = client.get(f"/gegenstaende/{gegenstand_id}")
 

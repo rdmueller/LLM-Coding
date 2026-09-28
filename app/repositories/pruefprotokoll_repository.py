@@ -5,6 +5,7 @@ import sqlite3
 import uuid
 
 from app.models import Pruefprotokoll
+from app.repositories._transaction import commit_when_unmanaged
 
 
 class PruefprotokollRepository:
@@ -34,7 +35,7 @@ class PruefprotokollRepository:
                 erstellt_am,
             ),
         )
-        self._conn.commit()
+        commit_when_unmanaged(self._conn)
         return Pruefprotokoll(
             id=protokoll_id,
             gegenstand_id=gegenstand_id,

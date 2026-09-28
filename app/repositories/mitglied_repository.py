@@ -5,6 +5,7 @@ import sqlite3
 import uuid
 
 from app.models import Mitglied
+from app.repositories._transaction import commit_when_unmanaged
 
 
 class MitgliedRepository:
@@ -17,7 +18,7 @@ class MitgliedRepository:
             "INSERT INTO mitglied (id, name, gesperrt) VALUES (?, ?, 0)",
             (mitglied_id, name),
         )
-        self._conn.commit()
+        commit_when_unmanaged(self._conn)
         return Mitglied(id=mitglied_id, name=name, gesperrt=False)
 
     def finden(self, mitglied_id: str) -> Mitglied | None:

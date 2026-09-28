@@ -34,18 +34,23 @@ class RolleNichtErlaubtError(Exception):
 def create_app(db_path: str) -> FastAPI:
     app = FastAPI(title="Leihgut-Verwaltung")
 
-    conn = get_connection(db_path)
-    init_db(conn)
-    kontext = erstellen(conn)
-    app.state.kontext = kontext
+    init_conn = get_connection(db_path)
+    init_db(init_conn)
+    init_conn.close()
+    app.state.db_path = db_path
 
     def hole_kontext() -> Anwendungskontext:
-        return app.state.kontext
+        conn = get_connection(db_path)
+        try:
+            yield erstellen(conn)
+        finally:
+            conn.close()
 
     def rolle_pruefen(erlaubte_rollen: set[str]):
-        def dependency(x_rolle: str | None = Header(default=None)) -> None:
+        def dependency(x_rolle: str | None = Header(default=None)) -> str:
             if x_rolle not in erlaubte_rollen:
                 raise RolleNichtErlaubtError(f"Rolle '{x_rolle}' ist für diese Aktion nicht erlaubt")
+            return x_rolle
 
         return dependency
 
@@ -59,7 +64,8 @@ def create_app(db_path: str) -> FastAPI:
 
     @app.exception_handler(ValidationError)
     async def validation_handler(request: Request, exc: ValidationError) -> JSONResponse:
-        return JSONResponse(status_code=422, content={"code": exc.code, "message": str(exc)})
+        status_code = 403 if exc.code == "FORBIDDEN" else 422
+        return JSONResponse(status_code=status_code, content={"code": exc.code, "message": str(exc)})
 
     @app.exception_handler(RolleNichtErlaubtError)
     async def rolle_handler(request: Request, exc: RolleNichtErlaubtError) -> JSONResponse:
@@ -153,12 +159,18 @@ def create_app(db_path: str) -> FastAPI:
     @app.post(
         "/ausleihen/{ausleihe_id}/verlaengerung",
         response_model=AusleiheResponse,
-        dependencies=[Depends(rolle_pruefen({"thekendienst", "mitglied"}))],
     )
     def ausleihe_verlaengern(
-        ausleihe_id: str, kontext: Anwendungskontext = Depends(hole_kontext)
+        ausleihe_id: str,
+        x_rolle: str = Depends(rolle_pruefen({"thekendienst", "mitglied"})),
+        x_mitglied_id: str | None = Header(default=None),
+        kontext: Anwendungskontext = Depends(hole_kontext),
     ):
-        ausleihe = kontext.ausleihe_service.verlaengern(ausleihe_id)
+        if x_rolle == "mitglied" and x_mitglied_id is None:
+            raise ValidationError("Mitgliedsrolle erfordert den Header 'X-Mitglied-Id'", code="FORBIDDEN")
+        ausleihe = kontext.ausleihe_service.verlaengern(
+            ausleihe_id, anfragendes_mitglied_id=x_mitglied_id if x_rolle == "mitglied" else None
+        )
         return _zu_ausleihe_response(ausleihe, kontext)
 
     @app.post(

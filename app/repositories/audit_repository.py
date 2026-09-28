@@ -4,6 +4,8 @@ from __future__ import annotations
 import sqlite3
 import uuid
 
+from app.repositories._transaction import commit_when_unmanaged
+
 
 class AuditRepository:
     def __init__(self, conn: sqlite3.Connection) -> None:
@@ -23,7 +25,7 @@ class AuditRepository:
             "ausloeser, referenz_id) VALUES (?, ?, ?, ?, ?, ?)",
             (eintrag_id, zeitstempel, ereignis_typ, betrag_oder_zustand, ausloeser, referenz_id),
         )
-        self._conn.commit()
+        commit_when_unmanaged(self._conn)
         return eintrag_id
 
     def alle_fuer(self, referenz_id: str) -> list[sqlite3.Row]:

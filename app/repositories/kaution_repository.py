@@ -5,6 +5,7 @@ import sqlite3
 import uuid
 
 from app.models import Kaution
+from app.repositories._transaction import commit_when_unmanaged
 
 
 class KautionRepository:
@@ -17,7 +18,7 @@ class KautionRepository:
             "INSERT INTO kaution (id, ausleihe_id, betrag, status) VALUES (?, ?, ?, 'hinterlegt')",
             (kaution_id, ausleihe_id, betrag),
         )
-        self._conn.commit()
+        commit_when_unmanaged(self._conn)
         return Kaution(id=kaution_id, ausleihe_id=ausleihe_id, betrag=betrag, status="hinterlegt")
 
     def finden_fuer_ausleihe(self, ausleihe_id: str) -> Kaution | None:
@@ -37,17 +38,23 @@ class KautionRepository:
         return _to_kaution(row)
 
     def abzug_anwenden(self, kaution_id: str, abzug: int, voller_einbehalt: bool = False) -> Kaution:
-        """BR-KAU-03/BR-KAU-04: aendert nur den Status, der hinterlegte Betrag bleibt unveraendert."""
+        """BR-KAU-03/BR-KAU-04: passt den verbleibenden Kautionssaldo und den Status an."""
         kaution = self.finden(kaution_id)
         if voller_einbehalt or abzug == kaution.betrag:
+            neuer_betrag = 0
             status = "einbehalten"
         elif abzug > 0:
+            neuer_betrag = max(kaution.betrag - abzug, 0)
             status = "teilweise_einbehalten"
         else:
+            neuer_betrag = 0
             status = "freigegeben"
-        self._conn.execute("UPDATE kaution SET status = ? WHERE id = ?", (status, kaution_id))
-        self._conn.commit()
-        return Kaution(id=kaution.id, ausleihe_id=kaution.ausleihe_id, betrag=kaution.betrag, status=status)
+        self._conn.execute(
+            "UPDATE kaution SET betrag = ?, status = ? WHERE id = ?",
+            (neuer_betrag, status, kaution_id),
+        )
+        commit_when_unmanaged(self._conn)
+        return Kaution(id=kaution.id, ausleihe_id=kaution.ausleihe_id, betrag=neuer_betrag, status=status)
 
 
 def _to_kaution(row: sqlite3.Row) -> Kaution:

@@ -7,6 +7,7 @@ from __future__ import annotations
 from app.errors import ConflictError, NotFoundError, ValidationError
 from app.models import Gegenstand
 from app.repositories.gegenstand_repository import GegenstandRepository
+from app.repositories._transaction import transaction
 from app.services.vormerkung_service import VormerkungService
 
 
@@ -27,15 +28,16 @@ class WartungService:
         if gegenstand.zustand != "wartungsfaellig":
             raise ConflictError("Gegenstand ist nicht wartungsfällig")
 
-        erfolgreich = self._gegenstand_repository.zustand_wechseln_atomar(
-            gegenstand.id, "wartungsfaellig", "verfuegbar", gegenstand.version
-        )
-        if not erfolgreich:
-            raise ConflictError("Gegenstand wurde inzwischen anderweitig verändert")
+        with transaction(self._gegenstand_repository._conn, immediate=True):
+            erfolgreich = self._gegenstand_repository.zustand_wechseln_atomar(
+                gegenstand.id, "wartungsfaellig", "verfuegbar", gegenstand.version
+            )
+            if not erfolgreich:
+                raise ConflictError("Gegenstand wurde inzwischen anderweitig verändert")
 
-        self._gegenstand_repository.nutzungszaehler_zuruecksetzen(gegenstand.id)  # BR-WA-03
-        self._vormerkung_service.zuteilen(gegenstand.id, gegenstand.kategorie_id)  # BR-VM-03
-        return self._gegenstand_repository.finden(gegenstand.id)
+            self._gegenstand_repository.nutzungszaehler_zuruecksetzen(gegenstand.id)  # BR-WA-03
+            self._vormerkung_service.zuteilen(gegenstand.id, gegenstand.kategorie_id)  # BR-VM-03
+            return self._gegenstand_repository.finden(gegenstand.id)
 
     def ausmustern(self, gegenstand_id: str, rolle: str = "wart") -> Gegenstand:
         if rolle != "wart":
@@ -45,7 +47,10 @@ class WartungService:
         if gegenstand is None:
             raise NotFoundError(f"Gegenstand {gegenstand_id} nicht gefunden")
 
-        # BR-VM-07: Vormerkungs-Warteschlange bleibt unangetastet
+        erlaubte_ausgangszustaende = {"verfuegbar", "wartungsfaellig"}
+        if gegenstand.zustand not in erlaubte_ausgangszustaende:
+            raise ConflictError("Gegenstand kann aus diesem Zustand nicht ausgemustert werden")
+
         erfolgreich = self._gegenstand_repository.zustand_setzen(
             gegenstand.id, "ausgemustert", gegenstand.version
         )

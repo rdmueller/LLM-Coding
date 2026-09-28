@@ -53,7 +53,7 @@ Format: Quelle, Stimulus, Artefakt, Umgebung, Reaktion, Antwortmaß (6-teilig).
 |===
 |Quelle |Wart
 |Stimulus |Schließt die 50. Prüfung für ein Mitglied mit gemischten Abzügen und Freigaben ab
-|Artefakt |KautionService, Kautionsbewegung-Tabelle
+|Artefakt |RueckgabeService, KautionRepository, Tabelle `audit_log`
 |Umgebung |Regulärer Betrieb
 |Reaktion |Saldo wird aus allen Bewegungen (Hinterlegung, Abzug, Freigabe) neu berechnet
 |Antwortmaß |Abweichung zwischen gespeichertem Saldo und Neuberechnung: 0 Cent
@@ -106,4 +106,3 @@ Format: Quelle, Stimulus, Artefakt, Umgebung, Reaktion, Antwortmaß (6-teilig).
 |Reaktion |Änderung ist in genau einer Methode einer Service-Klasse lokalisiert, kein Eingriff in REST-/CLI-Code nötig
 |Antwortmaß |1 geänderte Methode, 0 geänderte Controller/CLI-Dateien
 |===
-

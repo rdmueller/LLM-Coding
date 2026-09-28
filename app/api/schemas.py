@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 
 class KategorieAnlegenRequest(BaseModel):
-    name: str
+    name: str = Field(min_length=1)
     leihdauerTage: int = Field(gt=0)
     wartungsintervall: int = Field(gt=0)
     einweisungspflichtig: bool = False
@@ -38,7 +38,7 @@ class GegenstandResponse(BaseModel):
 
 
 class MitgliedAnlegenRequest(BaseModel):
-    name: str
+    name: str = Field(min_length=1)
 
 
 class MitgliedResponse(BaseModel):
@@ -48,7 +48,7 @@ class MitgliedResponse(BaseModel):
 
 
 class EinweisungAnlegenRequest(BaseModel):
-    kategorieId: str
+    kategorieId: str = Field(min_length=1)
 
 
 class EinweisungResponse(BaseModel):
@@ -59,7 +59,7 @@ class EinweisungResponse(BaseModel):
 
 
 class AusgabeRequest(BaseModel):
-    mitgliedId: str
+    mitgliedId: str = Field(min_length=1)
 
 
 class RuecknahmeRequest(BaseModel):
@@ -82,7 +82,7 @@ class FehlerResponse(BaseModel):
 
 
 class VormerkungAnlegenRequest(BaseModel):
-    mitgliedId: str
+    mitgliedId: str = Field(min_length=1)
 
 
 class VormerkungResponse(BaseModel):

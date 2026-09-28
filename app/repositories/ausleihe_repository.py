@@ -5,6 +5,7 @@ import sqlite3
 import uuid
 
 from app.models import Ausleihe
+from app.repositories._transaction import commit_when_unmanaged
 
 
 class AusleiheRepository:
@@ -24,7 +25,7 @@ class AusleiheRepository:
             "rueckgabefrist, verlaengert, status) VALUES (?, ?, ?, ?, ?, 0, 'aktiv')",
             (ausleihe_id, gegenstand_id, mitglied_id, ausgabedatum, rueckgabefrist),
         )
-        self._conn.commit()
+        commit_when_unmanaged(self._conn)
         return Ausleihe(
             id=ausleihe_id,
             gegenstand_id=gegenstand_id,
@@ -55,14 +56,14 @@ class AusleiheRepository:
             "UPDATE ausleihe SET rueckgabefrist = ?, verlaengert = 1 WHERE id = ?",
             (neue_rueckgabefrist, ausleihe_id),
         )
-        self._conn.commit()
+        commit_when_unmanaged(self._conn)
 
     def rueckgabefrist_setzen(self, ausleihe_id: str, rueckgabefrist: str) -> None:
         """Test-Hilfsmethode, um Überfälligkeit zu simulieren (Sperr-Berechnung folgt in Epic 0019)."""
         self._conn.execute(
             "UPDATE ausleihe SET rueckgabefrist = ? WHERE id = ?", (rueckgabefrist, ausleihe_id)
         )
-        self._conn.commit()
+        commit_when_unmanaged(self._conn)
 
     def finden_aktive_fuer_gegenstand(self, gegenstand_id: str) -> Ausleihe | None:
         row = self._conn.execute(
@@ -76,7 +77,7 @@ class AusleiheRepository:
         self._conn.execute(
             "UPDATE ausleihe SET status = 'abgeschlossen' WHERE id = ?", (ausleihe_id,)
         )
-        self._conn.commit()
+        commit_when_unmanaged(self._conn)
 
     def hat_ueberfaellige_offene_ausleihen(self, mitglied_id: str, heute: str) -> bool:  # BR-SP-02
         row = self._conn.execute(

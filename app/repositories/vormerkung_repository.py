@@ -8,6 +8,7 @@ import sqlite3
 import uuid
 
 from app.models import Vormerkung
+from app.repositories._transaction import commit_when_unmanaged
 
 
 class VormerkungRepository:
@@ -20,7 +21,7 @@ class VormerkungRepository:
             "INSERT INTO vormerkung (id, kategorie_id, mitglied_id, eingangszeit) VALUES (?, ?, ?, ?)",
             (vormerkung_id, kategorie_id, mitglied_id, eingangszeit),
         )
-        self._conn.commit()
+        commit_when_unmanaged(self._conn)
         return Vormerkung(
             id=vormerkung_id, kategorie_id=kategorie_id, mitglied_id=mitglied_id, eingangszeit=eingangszeit
         )
@@ -33,7 +34,7 @@ class VormerkungRepository:
 
     def entfernen_atomar(self, vormerkung_id: str) -> bool:  # BR-NL-02
         cursor = self._conn.execute("DELETE FROM vormerkung WHERE id = ?", (vormerkung_id,))
-        self._conn.commit()
+        commit_when_unmanaged(self._conn)
         return cursor.rowcount == 1
 
     def warteschlangenlaenge(self, kategorie_id: str) -> int:  # SUC-05

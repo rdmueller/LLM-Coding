@@ -5,6 +5,7 @@ import sqlite3
 import uuid
 
 from app.models import Reservierung
+from app.repositories._transaction import commit_when_unmanaged
 
 
 class ReservierungRepository:
@@ -20,7 +21,7 @@ class ReservierungRepository:
             "VALUES (?, ?, ?, 'aktiv', ?, ?)",
             (reservierung_id, gegenstand_id, mitglied_id, erstellt_am, verfallszeit),
         )
-        self._conn.commit()
+        commit_when_unmanaged(self._conn)
         return Reservierung(
             id=reservierung_id,
             gegenstand_id=gegenstand_id,
@@ -49,4 +50,4 @@ class ReservierungRepository:
         self._conn.execute(
             "UPDATE reservierung SET status = ? WHERE id = ?", (neuer_status, reservierung_id)
         )
-        self._conn.commit()
+        commit_when_unmanaged(self._conn)

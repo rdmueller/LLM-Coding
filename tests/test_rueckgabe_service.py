@@ -109,7 +109,7 @@ def test_verloren_behaelt_volle_kaution_ein_und_mustert_aus_br_kau_03(
     kaution_nachher = kontext.kaution_repository.finden_fuer_ausleihe(ausleihe.id)
     gegenstand_nachher = kontext.gegenstand_repository.finden(gegenstand.id)
     assert kaution_nachher.status == "einbehalten"
-    assert kaution_nachher.betrag == kaution.betrag
+    assert kaution_nachher.betrag == 0
     assert gegenstand_nachher.zustand == "ausgemustert"
 
 
@@ -166,6 +166,34 @@ def test_bereits_vermerkter_schaden_wird_nicht_erneut_zugerechnet_br_rp_05(
     assert protokoll.schaden_vermerkt is False
     kaution_zweite = kontext.kaution_repository.finden_fuer_ausleihe(zweite_ausleihe.id)
     assert kaution_zweite.status == "freigegeben"
+    assert kaution_zweite.betrag == 0
+
+
+def test_teilabzug_verringert_den_verbleibenden_kautionssaldo(
+    kontext: Anwendungskontext,
+) -> None:
+    gegenstand, ausleihe = _in_pruefung_mit_ausleihe(kontext)
+    kaution = kontext.kaution_repository.finden_fuer_ausleihe(ausleihe.id)
+
+    kontext.rueckgabe_service.pruefung_abschliessen(gegenstand.id, "unauffaellig", abzug=5)
+
+    kaution_nachher = kontext.kaution_repository.finden_fuer_ausleihe(ausleihe.id)
+    assert kaution_nachher.status == "teilweise_einbehalten"
+    assert kaution_nachher.betrag == kaution.betrag - 5
+
+
+def test_unauffaellige_pruefung_protokolliert_die_vollstaendige_freigabe(
+    kontext: Anwendungskontext,
+) -> None:
+    gegenstand, ausleihe = _in_pruefung_mit_ausleihe(kontext)
+    kaution = kontext.kaution_repository.finden_fuer_ausleihe(ausleihe.id)
+
+    protokoll = kontext.rueckgabe_service.pruefung_abschliessen(gegenstand.id, "unauffaellig")
+
+    eintraege = kontext.audit_repository.alle_fuer(kaution.id)
+    assert eintraege[-1]["referenz_id"] == kaution.id
+    assert eintraege[-1]["betrag_oder_zustand"] == str(kaution.betrag)
+    assert protokoll.id is not None
 
 
 def _voller_zyklus(kontext: Anwendungskontext, gegenstand_id: str, mitglied_id: str, ergebnis: str):
@@ -204,3 +232,24 @@ def test_nutzungszaehler_erreicht_wartungsintervall_setzt_wartungsfaellig_br_wa_
 
     assert gegenstand_nachher.nutzungszaehler == 5
     assert gegenstand_nachher.zustand == "wartungsfaellig"
+
+
+def test_pruefung_rollt_ausleihe_und_kaution_bei_spaeterem_fehler_zurueck(
+    kontext: Anwendungskontext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    gegenstand, ausleihe = _in_pruefung_mit_ausleihe(kontext)
+    kaution_vorher = kontext.kaution_repository.finden_fuer_ausleihe(ausleihe.id)
+
+    def kaputt(*args, **kwargs):
+        raise RuntimeError("kaputt")
+
+    monkeypatch.setattr(kontext.vormerkung_service, "zuteilen", kaputt)
+
+    with pytest.raises(RuntimeError):
+        kontext.rueckgabe_service.pruefung_abschliessen(gegenstand.id, "unauffaellig")
+
+    assert kontext.ausleihe_repository.finden(ausleihe.id).status == "aktiv"
+    assert kontext.gegenstand_repository.finden(gegenstand.id).zustand == "in_pruefung"
+    kaution_nachher = kontext.kaution_repository.finden_fuer_ausleihe(ausleihe.id)
+    assert kaution_nachher.status == kaution_vorher.status
+    assert kaution_nachher.betrag == kaution_vorher.betrag

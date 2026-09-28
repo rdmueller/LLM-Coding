@@ -5,6 +5,7 @@ import sqlite3
 import uuid
 
 from app.models import Gegenstand
+from app.repositories._transaction import commit_when_unmanaged
 
 
 class GegenstandRepository:
@@ -25,7 +26,7 @@ class GegenstandRepository:
             "VALUES (?, ?, ?, ?, ?, 0, 'verfuegbar', 0)",
             (gegenstand_id, inventarnummer, kategorie_id, wiederbeschaffungswert, kaution),
         )
-        self._conn.commit()
+        commit_when_unmanaged(self._conn)
         return Gegenstand(
             id=gegenstand_id,
             inventarnummer=inventarnummer,
@@ -70,7 +71,7 @@ class GegenstandRepository:
             "WHERE id = ? AND zustand = ? AND version = ?",
             (neuer_zustand, gegenstand_id, erwarteter_zustand, version),
         )
-        self._conn.commit()
+        commit_when_unmanaged(self._conn)
         return cursor.rowcount == 1
 
     def nutzungszaehler_erhoehen(self, gegenstand_id: str) -> int:
@@ -79,7 +80,7 @@ class GegenstandRepository:
             "UPDATE gegenstand SET nutzungszaehler = nutzungszaehler + 1 WHERE id = ?",
             (gegenstand_id,),
         )
-        self._conn.commit()
+        commit_when_unmanaged(self._conn)
         row = self._conn.execute(
             "SELECT nutzungszaehler FROM gegenstand WHERE id = ?", (gegenstand_id,)
         ).fetchone()
@@ -90,7 +91,7 @@ class GegenstandRepository:
         self._conn.execute(
             "UPDATE gegenstand SET nutzungszaehler = 0 WHERE id = ?", (gegenstand_id,)
         )
-        self._conn.commit()
+        commit_when_unmanaged(self._conn)
 
     def zustand_setzen(
         self, gegenstand_id: str, neuer_zustand: str, erwarteter_version: int
@@ -101,19 +102,7 @@ class GegenstandRepository:
             "WHERE id = ? AND version = ?",
             (neuer_zustand, gegenstand_id, erwarteter_version),
         )
-        self._conn.commit()
-        return cursor.rowcount == 1
-
-    def zustand_setzen(
-        self, gegenstand_id: str, neuer_zustand: str, erwarteter_version: int
-    ) -> bool:
-        """BR-VM-07: Zustandswechsel ohne Vorbedingung an den Ausgangszustand (z. B. Ausmusterung)."""
-        cursor = self._conn.execute(
-            "UPDATE gegenstand SET zustand = ?, version = version + 1 "
-            "WHERE id = ? AND version = ?",
-            (neuer_zustand, gegenstand_id, erwarteter_version),
-        )
-        self._conn.commit()
+        commit_when_unmanaged(self._conn)
         return cursor.rowcount == 1
 
 def _to_gegenstand(row: sqlite3.Row) -> Gegenstand:
